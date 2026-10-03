@@ -1,0 +1,217 @@
+-- src/notify.lua
+-- Sistem notifikasi varohub: card muncul kanan bawah, auto hilang.
+-- Tidak pakai require. Core & parent GUI di-inject via Notify.init(Core, parentGui).
+
+local Notify = {}
+
+local TweenService = game:GetService("TweenService")
+
+local Core = nil
+local HOLDER = nil
+local MAX_VISIBLE = 5
+
+local THEME = {
+	bg       = Color3.fromRGB(20, 20, 30),
+	accent   = Color3.fromRGB(150, 90, 255),
+	text     = Color3.fromRGB(235, 235, 255),
+	textDim  = Color3.fromRGB(170, 170, 200),
+	success  = Color3.fromRGB(120, 220, 150),
+	warn     = Color3.fromRGB(240, 190, 90),
+	error    = Color3.fromRGB(240, 90, 110),
+	info     = Color3.fromRGB(120, 170, 255),
+}
+
+local TYPES = {
+	info    = { color = THEME.info,    icon = "ℹ" },
+	success = { color = THEME.success, icon = "✓" },
+	warn    = { color = THEME.warn,    icon = "!" },
+	error   = { color = THEME.error,   icon = "✕" },
+	default = { color = THEME.accent,  icon = "◆" },
+}
+
+local function tween(o, p, t, style, dir)
+	TweenService:Create(o, TweenInfo.new(t or 0.22, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), p):Play()
+end
+
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props or {}) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
+
+local function countVisible()
+	if not HOLDER then return 0 end
+	local n = 0
+	for _, c in ipairs(HOLDER:GetChildren()) do
+		if c:IsA("Frame") then n += 1 end
+	end
+	return n
+end
+
+function Notify.init(core, parentGui)
+	Core = core
+	if not parentGui then
+		warn("[varohub:notify] parentGui nil")
+		return Notify
+	end
+
+	if HOLDER and HOLDER.Parent then HOLDER:Destroy() end
+
+	HOLDER = new("Frame", {
+		Name = "varohubNotify",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -18, 1, -18),
+		Size = UDim2.fromOffset(280, 400),
+		BackgroundTransparency = 1,
+		Parent = parentGui,
+	})
+	local list = new("UIListLayout", {
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, HOLDER)
+	list.Name = "Layout"
+
+	return Notify
+end
+
+function Notify.push(title, body, duration, kind)
+	if not HOLDER then
+		warn("[varohub:notify] belum init")
+		return
+	end
+
+	kind = kind or "default"
+	local conf = TYPES[kind] or TYPES.default
+	duration = duration or 3
+
+	if countVisible() >= MAX_VISIBLE then
+		local first = HOLDER:GetChildren()[1]
+		if first and first:IsA("Frame") then first:Destroy() end
+	end
+
+	local card = new("Frame", {
+		Name = "Card",
+		Size = UDim2.fromOffset(280, 60),
+		BackgroundColor3 = THEME.bg,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = HOLDER,
+	})
+	new("UICorner", {CornerRadius = UDim.new(0, 10)}, card)
+	new("UIStroke", {Color = conf.color, Thickness = 1.5, Transparency = 0.35}, card)
+
+	-- accent bar kiri
+	local accent = new("Frame", {
+		Size = UDim2.new(0, 4, 1, 0),
+		BackgroundColor3 = conf.color,
+		BorderSizePixel = 0,
+		Parent = card,
+	})
+	new("UICorner", {CornerRadius = UDim.new(0, 10)}, accent)
+
+	-- icon bulat
+	local iconBox = new("Frame", {
+		Position = UDim2.new(0, 14, 0.5, -14),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = conf.color,
+		BackgroundTransparency = 0.75,
+		BorderSizePixel = 0,
+		Parent = card,
+	})
+	new("UICorner", {CornerRadius = UDim.new(1, 0)}, iconBox)
+	new("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = conf.icon,
+		TextSize = 16,
+		TextColor3 = conf.color,
+		Parent = iconBox,
+	})
+
+	-- title
+	new("TextLabel", {
+		Position = UDim2.new(0, 52, 0, 10),
+		Size = UDim2.new(1, -64, 0, 16),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = title or "varohub",
+		TextSize = 13,
+		TextColor3 = THEME.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+
+	-- body
+	local bodyLbl = new("TextLabel", {
+		Position = UDim2.new(0, 52, 0, 26),
+		Size = UDim2.new(1, -64, 0, 28),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = body or "",
+		TextSize = 12,
+		TextColor3 = THEME.textDim,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextWrapped = true,
+		Parent = card,
+	})
+
+	-- progress bar
+	local progressTrack = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -2),
+		Size = UDim2.new(1, -16, 0, 2),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 80),
+		BorderSizePixel = 0,
+		Parent = card,
+	})
+	new("UICorner", {CornerRadius = UDim.new(1, 0)}, progressTrack)
+	local progressFill = new("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = conf.color,
+		BorderSizePixel = 0,
+		Parent = progressTrack,
+	})
+	new("UICorner", {CornerRadius = UDim.new(1, 0)}, progressFill)
+
+	-- animasi masuk
+	card.Position = UDim2.new(1, 320, 0, 0)
+	tween(card, {Position = UDim2.new(0, 0, 0, 0)})
+
+	-- progress
+	tween(progressFill, {Size = UDim2.fromScale(0, 1)}, duration, Enum.EasingStyle.Linear, Enum.EasingDirection.In)
+
+	-- auto hilang
+	task.delay(duration, function()
+		if not card or not card.Parent then return end
+		tween(card, {Position = UDim2.new(1, 320, 0, 0), BackgroundTransparency = 1}, 0.25)
+		task.wait(0.3)
+		card:Destroy()
+	end)
+
+	-- klik buat tutup cepat
+	card.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			card:Destroy()
+		end
+	end)
+
+	return card
+end
+
+-- shortcuts
+function Notify.info(title, body, d)    return Notify.push(title, body, d, "info")    end
+function Notify.success(title, body, d) return Notify.push(title, body, d, "success") end
+function Notify.warn(title, body, d)    return Notify.push(title, body, d, "warn")    end
+function Notify.error(title, body, d)   return Notify.push(title, body, d, "error")   end
+
+function Notify.destroy()
+	if HOLDER then HOLDER:Destroy() HOLDER = nil end
+end
+
+return Notify
